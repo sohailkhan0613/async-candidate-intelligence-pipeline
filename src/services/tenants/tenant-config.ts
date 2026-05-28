@@ -1,20 +1,8 @@
 import { readFileSync } from "node:fs";
-import { z } from "zod";
-
-const tenantSchema = z.object({
-  weights: z.object({
-    experience: z.number().min(0).max(1),
-    skills: z.number().min(0).max(1),
-    education: z.number().min(0).max(1)
-  }),
-  hiringThreshold: z.number().min(0).max(1),
-  maxCandidatesPerBatch: z.number().int().positive()
-});
-
-const tenantsSchema = z.record(z.string(), tenantSchema);
+import { tenantsFileSchema } from "../../schemas/tenant.schemas.js";
 
 const file = readFileSync("tenants.config.json", "utf-8");
-const parsed = tenantsSchema.parse(JSON.parse(file));
+const parsed = tenantsFileSchema.parse(JSON.parse(file));
 
 for (const [tenantId, tenant] of Object.entries(parsed)) {
   const total = tenant.weights.experience + tenant.weights.skills + tenant.weights.education;
@@ -24,5 +12,3 @@ for (const [tenantId, tenant] of Object.entries(parsed)) {
 }
 
 export const tenants = parsed;
-
-export type TenantId = keyof typeof tenants;
