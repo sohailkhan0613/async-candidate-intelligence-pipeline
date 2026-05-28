@@ -1,32 +1,14 @@
-export interface Stage1Job {
-  candidateId: string;
-  batchId: string;
-  tenantId: string;
-  jd: string;
-  rawResume: string;
-  correlationId: string;
-}
-
-export interface Stage2Job {
-  candidateId: string;
-  batchId: string;
-  tenantId: string;
-  jd: string;
-  parsedResume: {
-    normalizedText: string;
-    summary: string;
-    wasTruncated: boolean;
-  };
-  correlationId: string;
-}
-
-export interface Stage3Job {
-  candidateId: string;
-  batchId: string;
-  tenantId: string;
-  score: {
-    totalScore: number;
-    rationale: string;
-  };
-  correlationId: string;
-}
+export {
+  parsedResumeSchema,
+  scoringResultSchema,
+  hiringRecommendationSchema,
+  stage1JobSchema,
+  stage2JobSchema,
+  stage3JobSchema,
+  type ParsedResume,
+  type ScoringResult,
+  type HiringRecommendation,
+  type Stage1Job,
+  type Stage2Job,
+  type Stage3Job
+} from "../schemas/pipeline.schemas.js";

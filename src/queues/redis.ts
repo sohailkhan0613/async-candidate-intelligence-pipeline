@@ -1,9 +1,11 @@
 import IORedis from "ioredis";
 import { env } from "../config/env.js";
 
-export const redis = new IORedis({
+export const redisConnection = {
   host: env.REDIS_HOST,
   port: env.REDIS_PORT,
   password: env.REDIS_PASSWORD || undefined,
-  maxRetriesPerRequest: null
-});
+  maxRetriesPerRequest: null as null
+};
+
+export const redis = new IORedis(redisConnection);
