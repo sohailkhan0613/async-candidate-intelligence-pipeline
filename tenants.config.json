@@ -1,0 +1,11 @@
+{
+  "acme-corp": {
+    "weights": {
+      "experience": 0.4,
+      "skills": 0.4,
+      "education": 0.2
+    },
+    "hiringThreshold": 0.7,
+    "maxCandidatesPerBatch": 100
+  }
+}
