@@ -1,0 +1,274 @@
+{
+  "info": {
+    "_postman_id": "a1c2e3f4-b5d6-7890-abcd-ef1234567890",
+    "name": "Async Candidate Intelligence Pipeline",
+    "description": "API collection for the async candidate intelligence pipeline.\n\n**Setup**\n1. Run `npm run dev` (starts Redis + API on port 3000 by default).\n2. Use collection variable `baseUrl` (default: `http://localhost:3000`).\n3. Submit a batch first; `batchId` and `correlationId` are saved automatically.\n\n**Default tenant:** `acme-corp` (see `tenants.config.json`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "batchId",
+      "value": ""
+    },
+    {
+      "key": "candidateId",
+      "value": "candidate-1"
+    },
+    {
+      "key": "correlationId",
+      "value": ""
+    },
+    {
+      "key": "tenantId",
+      "value": "acme-corp"
+    }
+  ],
+  "item": [
+    {
+      "name": "Batches",
+      "item": [
+        {
+          "name": "Submit Batch",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.batchId) {",
+                  "    pm.collectionVariables.set('batchId', body.batchId);",
+                  "  }",
+                  "  if (body.correlationId) {",
+                  "    pm.collectionVariables.set('correlationId', body.correlationId);",
+                  "  }",
+                  "}",
+                  "",
+                  "pm.test('Status is 202 Accepted', function () {",
+                  "  pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test('Response includes batchId', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('batchId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-correlation-id",
+                "value": "{{correlationId}}",
+                "description": "Optional. Server generates one if omitted.",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"jd\": \"Senior backend engineer with Node.js, BullMQ, Redis, and TypeScript. Experience building async pipelines and REST APIs.\",\n  \"candidates\": [\n    {\n      \"candidateId\": \"{{candidateId}}\",\n      \"rawResume\": \"Senior Software Engineer with 6 years experience. Built async APIs with Node.js, BullMQ, and Redis. Led migration to event-driven architecture. Strong TypeScript and SQLite experience.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches"]
+            },
+            "description": "Queues a candidate batch for async processing. Returns immediately with HTTP 202.\n\n**Response:** `{ batchId, correlationId }`"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Batch Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}"]
+            },
+            "description": "Returns batch metadata and status.\n\nSet `batchId` from **Submit Batch** or the collection variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Stream Batch Events (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}/stream",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}", "stream"]
+            },
+            "description": "Server-Sent Events stream for real-time batch progress.\n\n**Events:** `candidate-update`, `batch-complete`\n**Heartbeat:** `: heartbeat` every 15 seconds\n\nPostman may not display SSE well; use `curl -N` for testing:\n`curl -N {{baseUrl}}/api/v1/batches/{{batchId}}/stream`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Candidates",
+      "item": [
+        {
+          "name": "Get Candidate Result",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/candidates/{{candidateId}}/result",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "candidates", "{{candidateId}}", "result"]
+            },
+            "description": "Returns full candidate pipeline state including parsed resume, score, and recommendation JSON when processing has completed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Get Circuit Breaker State",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response includes state', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('state');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/circuit-breaker",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "system", "circuit-breaker"]
+            },
+            "description": "Returns shared Redis-backed circuit breaker state for OpenAI calls.\n\n**Example response:** `{ state, openedAt, halfOpenProbe }`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Examples (errors)",
+      "item": [
+        {
+          "name": "Submit Batch — Unknown Tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"unknown-tenant\",\n  \"jd\": \"Backend role\",\n  \"candidates\": [\n    {\n      \"candidateId\": \"candidate-1\",\n      \"rawResume\": \"Sample resume text.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches"]
+            },
+            "description": "Expect HTTP 400 with `code: UNKNOWN_TENANT`."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Batch — Validation Error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"jd\": \"\",\n  \"candidates\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches"]
+            },
+            "description": "Expect HTTP 400 with `code: VALIDATION_ERROR`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Batch — Not Found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "00000000-0000-0000-0000-000000000000"]
+            },
+            "description": "Expect HTTP 404 with `code: NOT_FOUND`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
