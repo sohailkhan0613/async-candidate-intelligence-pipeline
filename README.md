@@ -5,6 +5,116 @@ Production-grade asynchronous AI candidate processing pipeline built with TypeSc
 
 ---
 
+# Quick Start (Run Locally)
+
+## Prerequisites
+
+* **Node.js 22+** and **npm**
+* **Docker Desktop** (recommended) — `npm run dev` starts Redis automatically via Docker Compose
+* **Git** (to clone the repo)
+
+If Docker is not installed, start Redis yourself first (`brew services start redis`) — the dev script detects an already-running Redis on `127.0.0.1:6379` and skips Docker.
+
+## 1. Clone and install
+
+```bash
+git clone https://github.com/sohailkhan0613/async-candidate-intelligence-pipeline.git
+cd async-candidate-intelligence-pipeline
+npm install
+```
+
+## 2. Start everything with one command
+
+```bash
+npm run dev
+```
+
+`npm run dev` automatically:
+
+1. Creates `.env` from `.env.example` if `.env` does not exist
+2. Creates the SQLite `data/` directory if needed
+3. Starts Redis with `docker compose up -d redis` (unless Redis is already running)
+4. Waits until Redis accepts connections
+5. Starts the API and all three background workers
+
+The API runs at `http://localhost:3000` (or your `PORT` in `.env`).
+
+### Optional: credentials in `.env`
+
+After the first run, edit `.env` if you need live OpenAI calls:
+
+| Variable | Required? | What to put |
+| -------- | --------- | ----------- |
+| `OPENAI_API_KEY` | Optional for local dev | Your OpenAI API key. Leave empty to use the built-in fallback scorer. |
+| `OPENAI_MODEL` | No | Default `gpt-4.1-mini` |
+| `REDIS_PASSWORD` | Only if Redis has auth | Leave empty for local Docker Redis |
+
+All other variables have sensible defaults in `.env.example`. Tenant scoring weights live in `tenants.config.json` (default tenant: `acme-corp`).
+
+To start **only** the Node server (no Redis bootstrap), use:
+
+```bash
+npm run dev:server
+```
+
+## 3. Smoke-test the API
+
+**Submit a batch** (expect HTTP `202`):
+
+```bash
+curl -i -X POST http://localhost:3000/api/v1/batches \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenantId": "acme-corp",
+    "jd": "Senior backend engineer with Node.js, BullMQ, and Redis.",
+    "candidates": [{
+      "candidateId": "candidate-1",
+      "rawResume": "Built async APIs with Node.js, BullMQ, and Redis."
+    }]
+  }'
+```
+
+Copy the `batchId` from the JSON response (a UUID). **Do not** type angle brackets in the shell — use the real id or a variable:
+
+```bash
+# Example: set BATCH_ID from the POST response
+export BATCH_ID="paste-your-batch-id-here"
+
+curl "http://localhost:3000/api/v1/batches/$BATCH_ID"
+curl "http://localhost:3000/api/v1/candidates/candidate-1/result"
+curl "http://localhost:3000/api/v1/system/circuit-breaker"
+curl -N "http://localhost:3000/api/v1/batches/$BATCH_ID/stream"
+```
+
+## 4. Run tests (optional)
+
+```bash
+npm test
+```
+
+Tests mock Redis and do not require Redis to be running.
+
+## Common issues
+
+| Symptom | Fix |
+| ------- | --- |
+| `Docker is not available and Redis is not running` | Install Docker Desktop, or run `brew services start redis` |
+| `ECONNREFUSED 127.0.0.1:6379` | Ensure Docker is running, or start Redis manually |
+| `zsh: parse error near '\n'` | You used `<batchId>` literally — replace with a real UUID or `$BATCH_ID` |
+| `Unknown tenant` | Use `acme-corp` or add a tenant in `tenants.config.json` |
+| Port already in use | Change `PORT` in `.env` |
+
+## Stop services
+
+```bash
+# Dev server: Ctrl+C in the terminal running npm run dev
+
+# Redis (Docker, optional — container can stay running)
+docker compose down
+```
+
+---
+
 # Overview
 
 This service processes recruiter candidate batches asynchronously through a resumable 3-stage AI pipeline:
@@ -761,35 +871,14 @@ LOG_LEVEL=
 
 # Local Development
 
-## Prerequisites
-
-* Node.js 22+
-* Docker
-* Redis
-
----
-
-# Start Redis
-
-```bash
-docker compose up -d redis
-```
-
----
-
-# Install Dependencies
+For day-to-day development, use the [Quick Start](#quick-start-run-locally) flow:
 
 ```bash
 npm install
-```
-
----
-
-# Start Development Server
-
-```bash
 npm run dev
 ```
+
+`npm run dev` bootstraps `.env`, starts Redis (Docker), and launches the API plus workers. Use `npm run dev:server` if Redis is already running and you only want the Node process.
 
 ---
 
