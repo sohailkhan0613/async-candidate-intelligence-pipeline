@@ -76,6 +76,29 @@ function runCommand(command, args, options = {}) {
   });
 }
 
+function runCommandCapture(command, args) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command, args, {
+      cwd: rootDir,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let stdout = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.on("error", rejectPromise);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolvePromise(stdout.trim());
+        return;
+      }
+      rejectPromise(new Error(`${command} ${args.join(" ")} exited with code ${code}`));
+    });
+  });
+}
+
 async function commandExists(command, args) {
   try {
     await runCommand(command, args, { stdio: "ignore" });
@@ -99,15 +122,78 @@ function canConnect(host, port) {
   });
 }
 
-async function waitForRedis(host, port, timeoutMs = 60_000) {
+async function pingWithLocalRedisCli(host, port, password) {
+  if (!(await commandExists("redis-cli", ["--version"]))) {
+    return null;
+  }
+
+  const args = ["-h", host, "-p", String(port)];
+  if (password) {
+    args.push("-a", password);
+  }
+  args.push("ping");
+
+  try {
+    const response = await runCommandCapture("redis-cli", args);
+    return response === "PONG";
+  } catch {
+    return false;
+  }
+}
+
+async function pingWithDockerRedis() {
+  const hasDockerCompose = await commandExists("docker", ["compose", "version"]);
+  if (hasDockerCompose) {
+    try {
+      const response = await runCommandCapture("docker", ["compose", "exec", "-T", "redis", "redis-cli", "ping"]);
+      return response === "PONG";
+    } catch {
+      return false;
+    }
+  }
+
+  const hasDockerComposeLegacy = await commandExists("docker-compose", ["version"]);
+  if (!hasDockerComposeLegacy) {
+    return null;
+  }
+
+  try {
+    const response = await runCommandCapture("docker-compose", ["exec", "-T", "redis", "redis-cli", "ping"]);
+    return response === "PONG";
+  } catch {
+    return false;
+  }
+}
+
+async function redisPing(host, port, password) {
+  const localPing = await pingWithLocalRedisCli(host, port, password);
+  if (localPing === true) {
+    return { ok: true, method: "redis-cli" };
+  }
+
+  const dockerPing = await pingWithDockerRedis();
+  if (dockerPing === true) {
+    return { ok: true, method: "docker compose exec redis redis-cli ping" };
+  }
+
+  if (localPing === false || dockerPing === false) {
+    return { ok: false, method: "redis-cli" };
+  }
+
+  const tcpOk = await canConnect(host, port);
+  return { ok: tcpOk, method: "tcp" };
+}
+
+async function waitForRedis(host, port, password, timeoutMs = 60_000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (await canConnect(host, port)) {
-      return;
+    const ping = await redisPing(host, port, password);
+    if (ping.ok) {
+      return ping;
     }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
   }
-  throw new Error(`Redis not reachable at ${host}:${port} after ${timeoutMs / 1000}s`);
+  throw new Error(`Redis ping failed at ${host}:${port} after ${timeoutMs / 1000}s`);
 }
 
 async function startRedisWithDocker() {
@@ -127,9 +213,10 @@ async function startRedisWithDocker() {
   return true;
 }
 
-async function ensureRedis(host, port) {
-  if (await canConnect(host, port)) {
-    log(`Redis already running at ${host}:${port}`);
+async function ensureRedis(host, port, password) {
+  let ping = await redisPing(host, port, password);
+  if (ping.ok) {
+    log(`Redis already running (${ping.method}) → PONG`);
     return;
   }
 
@@ -146,9 +233,9 @@ async function ensureRedis(host, port) {
     process.exit(1);
   }
 
-  log(`Waiting for Redis at ${host}:${port}...`);
-  await waitForRedis(host, port);
-  log("Redis is ready");
+  log(`Waiting for redis-cli ping at ${host}:${port}...`);
+  ping = await waitForRedis(host, port, password);
+  log(`Redis is ready (${ping.method}) → PONG`);
 }
 
 function startDevServer() {
@@ -176,14 +263,18 @@ async function main() {
   const fileEnv = loadEnvFile(envPath);
   const redisHost = process.env.REDIS_HOST ?? fileEnv.REDIS_HOST ?? "127.0.0.1";
   const redisPort = Number(process.env.REDIS_PORT ?? fileEnv.REDIS_PORT ?? "6379");
+  const redisPassword = process.env.REDIS_PASSWORD ?? fileEnv.REDIS_PASSWORD ?? "";
   const databasePath = process.env.DATABASE_PATH ?? fileEnv.DATABASE_PATH ?? "./data/pipeline.db";
 
   process.env.REDIS_HOST = redisHost;
   process.env.REDIS_PORT = String(redisPort);
   process.env.DATABASE_PATH = databasePath;
+  if (redisPassword) {
+    process.env.REDIS_PASSWORD = redisPassword;
+  }
 
   ensureDataDirectory(databasePath);
-  await ensureRedis(redisHost, redisPort);
+  await ensureRedis(redisHost, redisPort, redisPassword);
   startDevServer();
 }
 

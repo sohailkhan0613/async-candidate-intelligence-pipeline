@@ -34,7 +34,7 @@ npm run dev
 1. Creates `.env` from `.env.example` if `.env` does not exist
 2. Creates the SQLite `data/` directory if needed
 3. Starts Redis with `docker compose up -d redis` (unless Redis is already running)
-4. Waits until Redis accepts connections
+4. Verifies Redis with `redis-cli ping` (falls back to `docker compose exec redis redis-cli ping`, then TCP)
 5. Starts the API and all three background workers
 
 The API runs at `http://localhost:3000` (or your `PORT` in `.env`).
